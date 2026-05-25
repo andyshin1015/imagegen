@@ -473,7 +473,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
         outputH: outputH
       };
 
-      setProgress('이미지 생성 중...', 'AI가 이미지를 그리고 있어요 (약 20초)');
+      setProgress('이미지 생성 중...', 'gpt-image-2가 이미지를 그리고 있어요 (약 20초)');
 
       var res = await fetch('/api/generate', {
         method: 'POST',
@@ -481,7 +481,13 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
         body: JSON.stringify(payload)
       });
 
-      var data = await res.json();
+      var rawText = await res.text();
+      var data;
+      try {
+        data = JSON.parse(rawText);
+      } catch(e) {
+        throw new Error('서버 응답 오류: ' + rawText.slice(0, 200));
+      }
       if (!res.ok) throw new Error(data.error || 'API 오류');
 
       capturedImageUrl = 'data:image/png;base64,' + data.image;
