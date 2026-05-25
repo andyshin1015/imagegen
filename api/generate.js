@@ -58,7 +58,7 @@ export default async function handler(req, res) {
       form.append('n', '1');
       form.append('size', imageSize);
       form.append('quality', 'medium');
-      form.append('image', refBlob, `ref.${ext}`);
+      form.append('image[]', refBlob, `ref.${ext}`);
 
       /* 소재 이미지 추가 */
       if (Array.isArray(assets)) {
@@ -70,7 +70,7 @@ export default async function handler(req, res) {
           const ab = atob(b64);
           const ab2 = new Uint8Array(ab.length);
           for (let i = 0; i < ab.length; i++) ab2[i] = ab.charCodeAt(i);
-          form.append('image', new Blob([ab2], { type: assetMime }), `${asset.label}.${assetExt}`);
+          form.append('image[]', new Blob([ab2], { type: assetMime }), `${asset.label}.${assetExt}`);
         }
       }
 
