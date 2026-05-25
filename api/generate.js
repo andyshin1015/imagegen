@@ -6,143 +6,157 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-function json(data, status = 200) {
+function jsonRes(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { 'Content-Type': 'application/json', ...CORS },
   });
 }
 
+/* ArrayBuffer → base64 (Edge 호환) */
+function bufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 8192;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 export default async function handler(req) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  if (req.method !== 'POST') return jsonRes({ error: 'Method not allowed' }, 405);
 
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-  if (!OPENAI_API_KEY) return json({ error: 'OPENAI_API_KEY not set' }, 500);
+  if (!OPENAI_API_KEY) return jsonRes({ error: 'OPENAI_API_KEY가 설정되지 않았습니다' }, 500);
 
   let body;
   try {
     body = await req.json();
-  } catch (e) {
-    return json({ error: 'Invalid request body' }, 400);
+  } catch {
+    return jsonRes({ error: 'Request body 파싱 실패' }, 400);
   }
 
   const { refImage, refMime, assets, regions, outputW, outputH } = body;
 
-  try {
-    /* ── STEP 1: GPT-4o로 이미지 분석 → 프롬프트 생성 ── */
-    const userContent = [];
+  /* ── STEP 1: GPT-4o → 이미지 생성 프롬프트 ── */
+  const userContent = [];
 
-    if (refImage) {
+  if (refImage) {
+    userContent.push({
+      type: 'image_url',
+      image_url: {
+        url: `data:${refMime || 'image/jpeg'};base64,${refImage}`,
+        detail: 'high',
+      },
+    });
+  }
+
+  if (Array.isArray(assets)) {
+    for (const asset of assets) {
+      if (!asset.label || !asset.dataUrl) continue;
+      userContent.push({ type: 'text', text: `소재 이미지 "${asset.label}":` });
       userContent.push({
         type: 'image_url',
-        image_url: { url: `data:${refMime || 'image/jpeg'};base64,${refImage}`, detail: 'high' },
+        image_url: { url: asset.dataUrl, detail: 'high' },
       });
     }
+  }
 
-    if (Array.isArray(assets)) {
-      for (const asset of assets) {
-        if (!asset.label || !asset.dataUrl) continue;
-        userContent.push({ type: 'text', text: `소재 이미지 "${asset.label}":` });
-        userContent.push({ type: 'image_url', image_url: { url: asset.dataUrl, detail: 'high' } });
-      }
-    }
+  const regionDesc = Array.isArray(regions) && regions.length
+    ? regions.map(r => {
+        const refs = Array.isArray(assets)
+          ? assets.filter(a => a.label && r.cmd && r.cmd.includes(a.label)).map(a => `"${a.label}"`)
+          : [];
+        return `영역${r.id} [좌${Math.round(r.l)}% 상${Math.round(r.t)}% 너비${Math.round(r.w)}% 높이${Math.round(r.h)}%]`
+          + (refs.length ? ` → 참조: ${refs.join(', ')}` : '')
+          + `\n  명령: ${r.cmd || '없음'}`;
+      }).join('\n\n')
+    : '수정 명령 없음 — 레퍼런스 이미지를 그대로 재현';
 
-    const regionDesc = Array.isArray(regions) && regions.length
-      ? regions.map(r => {
-          const refs = Array.isArray(assets)
-            ? assets.filter(a => a.label && r.cmd && r.cmd.includes(a.label)).map(a => `"${a.label}"`)
-            : [];
-          return `영역${r.id} [좌${Math.round(r.l)}% 상${Math.round(r.t)}% 너비${Math.round(r.w)}% 높이${Math.round(r.h)}%]`
-            + (refs.length ? ` → 참조 소재: ${refs.join(', ')}` : '')
-            + `\n  수정 명령: ${r.cmd || '없음'}`;
-        }).join('\n\n')
-      : '수정 명령 없음 — 레퍼런스 이미지를 최대한 재현';
+  userContent.push({
+    type: 'text',
+    text: `You are a professional commerce image designer.
+Analyze the reference image and generate an English prompt (max 300 words) for gpt-image-2 to create a commerce product detail image.
 
-    const sizeNote = `${outputW ? outputW + 'px' : '제한없음'} x ${outputH ? outputH + 'px' : '제한없음'}`;
+Size: ${outputW ? outputW + 'px' : 'flexible'} x ${outputH ? outputH + 'px' : 'flexible'}
 
-    userContent.push({
-      type: 'text',
-      text: `당신은 커머스 이미지 전문 디자이너입니다.
-위 이미지들을 분석하여 아래 수정 명령을 반영한 커머스 상세 이미지 생성을 위한 프롬프트를 영어로 작성해주세요.
-
-출력 사이즈: ${sizeNote}
-수정 영역 및 명령:
+Modification instructions:
 ${regionDesc}
 
-규칙:
-- 영어로, 300단어 이내
-- 레퍼런스의 레이아웃/색상/스타일 최대한 반영
-- 수정 명령 정확히 반영
-- commerce product detail image 임을 명시
-- 프롬프트 텍스트만 반환, 설명 없이`,
-    });
+Rules:
+- English only
+- Reflect the reference layout, colors, and style as closely as possible
+- Apply modification instructions precisely
+- Specify it is a commerce product detail image
+- Return prompt text only, no explanation`,
+  });
 
-    const analysisRes = await fetch('https://api.openai.com/v1/chat/completions', {
+  let imagePrompt;
+  try {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
-      body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: userContent }], max_tokens: 500 }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: userContent }],
+        max_tokens: 500,
+      }),
     });
+    const t = await r.text();
+    if (!r.ok) return jsonRes({ error: 'GPT-4o 오류: ' + t.slice(0, 300) }, 500);
+    const d = JSON.parse(t);
+    imagePrompt = d.choices[0].message.content.trim();
+  } catch (e) {
+    return jsonRes({ error: 'GPT-4o 요청 실패: ' + String(e) }, 500);
+  }
 
-    const analysisText = await analysisRes.text();
-    if (!analysisRes.ok) {
-      return json({ error: 'GPT-4o 오류: ' + analysisText }, 500);
+  /* ── STEP 2: gpt-image-2 → 이미지 생성 ── */
+  const imageSize = (() => {
+    if (outputW && outputH) {
+      const ratio = outputW / outputH;
+      if (ratio > 1.4) return '1792x1024';
+      if (ratio < 0.7) return '1024x1792';
     }
-    let analysisData;
-    try { analysisData = JSON.parse(analysisText); } catch(e) {
-      return json({ error: 'GPT-4o 응답 파싱 실패: ' + analysisText.slice(0, 200) }, 500);
-    }
-    const imagePrompt = analysisData.choices[0].message.content.trim();
+    return '1024x1024';
+  })();
 
-    /* ── STEP 2: gpt-image-2로 이미지 생성 ── */
-    const imageSize = (() => {
-      if (outputW && outputH) {
-        const ratio = outputW / outputH;
-        if (ratio > 1.4) return '1792x1024';
-        if (ratio < 0.7) return '1024x1792';
-      }
-      return '1024x1024';
-    })();
-
-    const imageRes = await fetch('https://api.openai.com/v1/images/generations', {
+  let imageB64;
+  try {
+    const r = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
       body: JSON.stringify({
         model: 'gpt-image-2',
         prompt: imagePrompt.slice(0, 1000),
         n: 1,
         size: imageSize,
         quality: 'medium',
-        output_format: 'png',
       }),
     });
+    const t = await r.text();
+    if (!r.ok) return jsonRes({ error: 'gpt-image-2 오류: ' + t.slice(0, 300) }, 500);
+    const d = JSON.parse(t);
+    const item = d.data[0];
 
-    const imageText = await imageRes.text();
-    if (!imageRes.ok) {
-      return json({ error: 'gpt-image-2 오류: ' + imageText }, 500);
-    }
-    let imageData;
-    try { imageData = JSON.parse(imageText); } catch(e) {
-      return json({ error: 'gpt-image-2 응답 파싱 실패: ' + imageText.slice(0, 200) }, 500);
-    }
-    const item = imageData.data[0];
-
-    /* b64_json 직접 반환되는 경우 */
     if (item.b64_json) {
-      return json({ image: item.b64_json, prompt: imagePrompt });
+      imageB64 = item.b64_json;
+    } else if (item.url) {
+      const imgR = await fetch(item.url);
+      imageB64 = bufferToBase64(await imgR.arrayBuffer());
+    } else {
+      return jsonRes({ error: '이미지 데이터 없음: ' + JSON.stringify(item) }, 500);
     }
-
-    /* URL로 반환되는 경우 → fetch해서 base64 변환 */
-    if (item.url) {
-      const imgRes = await fetch(item.url);
-      const buf = await imgRes.arrayBuffer();
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-      return json({ image: b64, prompt: imagePrompt });
-    }
-
-    return json({ error: '이미지 데이터를 받지 못했습니다' }, 500);
-
-  } catch (err) {
-    return json({ error: err.message || String(err) }, 500);
+  } catch (e) {
+    return jsonRes({ error: 'gpt-image-2 요청 실패: ' + String(e) }, 500);
   }
+
+  return jsonRes({ image: imageB64, prompt: imagePrompt });
 }
