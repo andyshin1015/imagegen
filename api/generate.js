@@ -6,122 +6,29 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-function jsonRes(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json', ...CORS },
-  });
-}
-
-function bufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 8192;
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return Buffer.from(bytes).toString('base64');
-}
-
 export default async function handler(req, res) {
-  /* CORS preflight */
-  if (req.method === 'OPTIONS') {
-    res.status(204).set(CORS).end();
-    return;
-  }
-  if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
-  }
+  if (req.method === 'OPTIONS') { res.status(204).set(CORS).end(); return; }
+  if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-  if (!OPENAI_API_KEY) {
-    res.status(500).json({ error: 'OPENAI_API_KEY가 설정되지 않았습니다' });
-    return;
-  }
+  if (!OPENAI_API_KEY) { res.status(500).json({ error: 'OPENAI_API_KEY 없음' }); return; }
 
   const { refImage, refMime, assets, regions, outputW, outputH } = req.body;
 
-  /* ── STEP 1: GPT-4o → 프롬프트 생성 ── */
-  const userContent = [];
-
-  if (refImage) {
-    userContent.push({
-      type: 'image_url',
-      image_url: {
-        url: `data:${refMime || 'image/jpeg'};base64,${refImage}`,
-        detail: 'high',
-      },
-    });
-  }
-
-  if (Array.isArray(assets)) {
-    for (const asset of assets) {
-      if (!asset.label || !asset.dataUrl) continue;
-      userContent.push({ type: 'text', text: `소재 이미지 "${asset.label}":` });
-      userContent.push({
-        type: 'image_url',
-        image_url: { url: asset.dataUrl, detail: 'high' },
-      });
-    }
-  }
-
+  /* ── 프롬프트 텍스트 구성 ── */
   const regionDesc = Array.isArray(regions) && regions.length
     ? regions.map(r => {
         const refs = Array.isArray(assets)
           ? assets.filter(a => a.label && r.cmd && r.cmd.includes(a.label)).map(a => `"${a.label}"`)
           : [];
-        return `Region${r.id} [left:${Math.round(r.l)}% top:${Math.round(r.t)}% width:${Math.round(r.w)}% height:${Math.round(r.h)}%]`
-          + (refs.length ? ` → use assets: ${refs.join(', ')}` : '')
-          + `\n  instruction: ${r.cmd || 'none'}`;
-      }).join('\n\n')
-    : 'No modifications — recreate reference image as closely as possible';
+        return `Region${r.id} [left:${Math.round(r.l)}% top:${Math.round(r.t)}% w:${Math.round(r.w)}% h:${Math.round(r.h)}%]`
+          + (refs.length ? ` use: ${refs.join(', ')}` : '')
+          + ` — ${r.cmd || 'reproduce as-is'}`;
+      }).join('\n')
+    : 'Reproduce the reference image as a high-quality commerce product detail image.';
 
-  userContent.push({
-    type: 'text',
-    text: `You are a professional commerce image designer.
-Analyze the reference image and write an English image generation prompt (max 300 words) for gpt-image-2.
+  const prompt = `Commerce product detail image. Based on the reference, apply these changes:\n${regionDesc}\nStyle: professional, clean, high quality e-commerce.`;
 
-Output size: ${outputW ? outputW + 'px' : 'flexible'} x ${outputH ? outputH + 'px' : 'flexible'}
-
-Modification instructions:
-${regionDesc}
-
-Rules:
-- English only, max 300 words
-- Reflect reference layout, colors, and style as closely as possible
-- Apply modification instructions precisely
-- Specify this is a commerce product detail image
-- Return prompt text only, no explanations`,
-  });
-
-  let imagePrompt;
-  try {
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: userContent }],
-        max_tokens: 500,
-      }),
-    });
-    const text = await r.text();
-    if (!r.ok) {
-      res.status(500).json({ error: 'GPT-4o 오류: ' + text.slice(0, 300) });
-      return;
-    }
-    const data = JSON.parse(text);
-    imagePrompt = data.choices[0].message.content.trim();
-  } catch (e) {
-    res.status(500).json({ error: 'GPT-4o 요청 실패: ' + String(e) });
-    return;
-  }
-
-  /* ── STEP 2: gpt-image-2 → 이미지 생성 ── */
   const imageSize = (() => {
     if (outputW && outputH) {
       const ratio = outputW / outputH;
@@ -132,42 +39,75 @@ Rules:
   })();
 
   try {
-    const r = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-image-2',
-        prompt: imagePrompt.slice(0, 1000),
-        n: 1,
-        size: imageSize,
-        quality: 'medium',
-      }),
-    });
-    const text = await r.text();
-    if (!r.ok) {
-      res.status(500).json({ error: 'gpt-image-2 오류: ' + text.slice(0, 300) });
-      return;
-    }
-    const data = JSON.parse(text);
-    const item = data.data[0];
-
     let imageB64;
-    if (item.b64_json) {
-      imageB64 = item.b64_json;
-    } else if (item.url) {
-      const imgR = await fetch(item.url);
-      const buf = await imgR.arrayBuffer();
-      imageB64 = Buffer.from(buf).toString('base64');
+
+    if (refImage) {
+      /* ── 레퍼런스 있으면: edits 엔드포인트 사용 (이미지 → 수정) ── */
+      const mimeType = refMime || 'image/jpeg';
+      const ext = mimeType.includes('png') ? 'png' : 'jpeg';
+
+      /* base64 → Blob */
+      const binaryStr = atob(refImage);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+      const refBlob = new Blob([bytes], { type: mimeType });
+
+      const form = new FormData();
+      form.append('model', 'gpt-image-2');
+      form.append('prompt', prompt.slice(0, 1000));
+      form.append('n', '1');
+      form.append('size', imageSize);
+      form.append('quality', 'medium');
+      form.append('image', refBlob, `ref.${ext}`);
+
+      /* 소재 이미지 추가 */
+      if (Array.isArray(assets)) {
+        for (const asset of assets) {
+          if (!asset.label || !asset.dataUrl) continue;
+          const [meta, b64] = asset.dataUrl.split(',');
+          const assetMime = meta.match(/:(.*?);/)?.[1] || 'image/jpeg';
+          const assetExt = assetMime.includes('png') ? 'png' : 'jpeg';
+          const ab = atob(b64);
+          const ab2 = new Uint8Array(ab.length);
+          for (let i = 0; i < ab.length; i++) ab2[i] = ab.charCodeAt(i);
+          form.append('image', new Blob([ab2], { type: assetMime }), `${asset.label}.${assetExt}`);
+        }
+      }
+
+      const r = await fetch('https://api.openai.com/v1/images/edits', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
+        body: form,
+      });
+      const text = await r.text();
+      if (!r.ok) { res.status(500).json({ error: 'edits 오류: ' + text.slice(0, 400) }); return; }
+      const data = JSON.parse(text);
+      const item = data.data[0];
+      imageB64 = item.b64_json || await fetchToBase64(item.url);
+
     } else {
-      res.status(500).json({ error: '이미지 데이터 없음' });
-      return;
+      /* ── 레퍼런스 없으면: generations 엔드포인트 ── */
+      const r = await fetch('https://api.openai.com/v1/images/generations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
+        body: JSON.stringify({ model: 'gpt-image-2', prompt: prompt.slice(0, 1000), n: 1, size: imageSize, quality: 'medium' }),
+      });
+      const text = await r.text();
+      if (!r.ok) { res.status(500).json({ error: 'generations 오류: ' + text.slice(0, 400) }); return; }
+      const data = JSON.parse(text);
+      const item = data.data[0];
+      imageB64 = item.b64_json || await fetchToBase64(item.url);
     }
 
-    res.status(200).set(CORS).json({ image: imageB64, prompt: imagePrompt });
+    res.status(200).set(CORS).json({ image: imageB64, prompt });
+
   } catch (e) {
-    res.status(500).json({ error: 'gpt-image-2 요청 실패: ' + String(e) });
+    res.status(500).json({ error: String(e) });
   }
+}
+
+async function fetchToBase64(url) {
+  const r = await fetch(url);
+  const buf = await r.arrayBuffer();
+  return Buffer.from(buf).toString('base64');
 }
