@@ -1,5 +1,7 @@
 export const maxDuration = 300;
 
+import sharp from 'sharp';
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -26,6 +28,7 @@ export default async function handler(req, res) {
 
   const prompt = `Commerce product detail image. Based on the reference, apply these changes:\n${regionDesc}\nStyle: professional, clean, high quality e-commerce.`;
 
+  /* 요청 비율에 맞는 gpt-image-2 사이즈 선택 */
   const imageSize = (() => {
     if (outputW && outputH) {
       const ratio = outputW / outputH;
@@ -36,7 +39,7 @@ export default async function handler(req, res) {
   })();
 
   try {
-    let imageB64;
+    let rawBuffer;
 
     if (refImage) {
       const mimeType = refMime || 'image/jpeg';
@@ -76,7 +79,9 @@ export default async function handler(req, res) {
       if (!r.ok) { res.status(500).json({ error: 'edits 오류: ' + text.slice(0, 400) }); return; }
       const data = JSON.parse(text);
       const item = data.data[0];
-      imageB64 = item.b64_json || await fetchToBase64(item.url);
+      rawBuffer = item.b64_json
+        ? Buffer.from(item.b64_json, 'base64')
+        : await fetchToBuffer(item.url);
 
     } else {
       const r = await fetch('https://api.openai.com/v1/images/generations', {
@@ -88,9 +93,26 @@ export default async function handler(req, res) {
       if (!r.ok) { res.status(500).json({ error: 'generations 오류: ' + text.slice(0, 400) }); return; }
       const data = JSON.parse(text);
       const item = data.data[0];
-      imageB64 = item.b64_json || await fetchToBase64(item.url);
+      rawBuffer = item.b64_json
+        ? Buffer.from(item.b64_json, 'base64')
+        : await fetchToBuffer(item.url);
     }
 
+    /* ── sharp로 리사이즈 ── */
+    let finalBuffer = rawBuffer;
+    if (outputW || outputH) {
+      const resizeOptions = {
+        width: outputW || undefined,
+        height: outputH || undefined,
+        fit: (outputW && outputH) ? 'contain' : 'inside',  // 둘 다 지정 시 여백 포함, 하나만 지정 시 비율 유지
+        background: { r: 255, g: 255, b: 255, alpha: 1 },
+        kernel: sharp.kernel.lanczos3,  // 고품질 리사이즈
+        withoutEnlargement: false,
+      };
+      finalBuffer = await sharp(rawBuffer).resize(resizeOptions).png().toBuffer();
+    }
+
+    const imageB64 = finalBuffer.toString('base64');
     res.status(200).json({ image: imageB64, prompt });
 
   } catch (e) {
@@ -98,8 +120,7 @@ export default async function handler(req, res) {
   }
 }
 
-async function fetchToBase64(url) {
+async function fetchToBuffer(url) {
   const r = await fetch(url);
-  const buf = await r.arrayBuffer();
-  return Buffer.from(buf).toString('base64');
+  return Buffer.from(await r.arrayBuffer());
 }
