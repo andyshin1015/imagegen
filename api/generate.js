@@ -1,13 +1,11 @@
-export const maxDuration = 60;
-
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+export const maxDuration = 300;
 
 export default async function handler(req, res) {
-  if (req.method === 'OPTIONS') { res.status(204).set(CORS).end(); return; }
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') { res.status(204).end(); return; }
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -15,7 +13,6 @@ export default async function handler(req, res) {
 
   const { refImage, refMime, assets, regions, outputW, outputH } = req.body;
 
-  /* ── 프롬프트 텍스트 구성 ── */
   const regionDesc = Array.isArray(regions) && regions.length
     ? regions.map(r => {
         const refs = Array.isArray(assets)
@@ -42,11 +39,8 @@ export default async function handler(req, res) {
     let imageB64;
 
     if (refImage) {
-      /* ── 레퍼런스 있으면: edits 엔드포인트 사용 (이미지 → 수정) ── */
       const mimeType = refMime || 'image/jpeg';
       const ext = mimeType.includes('png') ? 'png' : 'jpeg';
-
-      /* base64 → Blob */
       const binaryStr = atob(refImage);
       const bytes = new Uint8Array(binaryStr.length);
       for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
@@ -60,7 +54,6 @@ export default async function handler(req, res) {
       form.append('quality', 'medium');
       form.append('image[]', refBlob, `ref.${ext}`);
 
-      /* 소재 이미지 추가 */
       if (Array.isArray(assets)) {
         for (const asset of assets) {
           if (!asset.label || !asset.dataUrl) continue;
@@ -86,7 +79,6 @@ export default async function handler(req, res) {
       imageB64 = item.b64_json || await fetchToBase64(item.url);
 
     } else {
-      /* ── 레퍼런스 없으면: generations 엔드포인트 ── */
       const r = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
@@ -99,7 +91,7 @@ export default async function handler(req, res) {
       imageB64 = item.b64_json || await fetchToBase64(item.url);
     }
 
-    res.status(200).set(CORS).json({ image: imageB64, prompt });
+    res.status(200).json({ image: imageB64, prompt });
 
   } catch (e) {
     res.status(500).json({ error: String(e) });
