@@ -86,11 +86,12 @@ ${regionDesc}
 
     const analysisText = await analysisRes.text();
     if (!analysisRes.ok) {
-      let msg = 'GPT-4o error';
-      try { msg = JSON.parse(analysisText).error?.message || msg; } catch {}
-      return json({ error: msg }, 500);
+      return json({ error: 'GPT-4o 오류: ' + analysisText }, 500);
     }
-    const analysisData = JSON.parse(analysisText);
+    let analysisData;
+    try { analysisData = JSON.parse(analysisText); } catch(e) {
+      return json({ error: 'GPT-4o 응답 파싱 실패: ' + analysisText.slice(0, 200) }, 500);
+    }
     const imagePrompt = analysisData.choices[0].message.content.trim();
 
     /* ── STEP 2: gpt-image-2로 이미지 생성 ── */
@@ -118,12 +119,12 @@ ${regionDesc}
 
     const imageText = await imageRes.text();
     if (!imageRes.ok) {
-      let msg = 'gpt-image-2 error';
-      try { msg = JSON.parse(imageText).error?.message || msg; } catch {}
-      return json({ error: msg }, 500);
+      return json({ error: 'gpt-image-2 오류: ' + imageText }, 500);
     }
-
-    const imageData = JSON.parse(imageText);
+    let imageData;
+    try { imageData = JSON.parse(imageText); } catch(e) {
+      return json({ error: 'gpt-image-2 응답 파싱 실패: ' + imageText.slice(0, 200) }, 500);
+    }
     const item = imageData.data[0];
 
     /* b64_json 직접 반환되는 경우 */
