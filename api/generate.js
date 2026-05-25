@@ -124,18 +124,25 @@ ${regionDesc}
         n: 1,
         size: imageSize,
         quality: 'standard',
-        response_format: 'b64_json',
       }),
     });
 
     if (!dalleRes.ok) {
       const e = await dalleRes.json();
-      throw new Error(e.error?.message || 'DALL-E error');
+      throw new Error(e.error?.message || 'gpt-image-2 error');
     }
 
     const dalleData = await dalleRes.json();
-    const imageB64 = dalleData.data[0].b64_json;
     const revisedPrompt = dalleData.data[0].revised_prompt || dallePrompt;
+
+    /* URL → base64 변환 */
+    const imageUrl = dalleData.data[0].url;
+    const imgRes = await fetch(imageUrl);
+    const imgBuffer = await imgRes.arrayBuffer();
+    const imgBytes = new Uint8Array(imgBuffer);
+    let binary = '';
+    for (let i = 0; i < imgBytes.length; i++) binary += String.fromCharCode(imgBytes[i]);
+    const imageB64 = btoa(binary);
 
     return new Response(
       JSON.stringify({ image: imageB64, prompt: revisedPrompt }),
