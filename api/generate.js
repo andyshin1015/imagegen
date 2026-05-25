@@ -26,7 +26,15 @@ export default async function handler(req, res) {
       }).join('\n')
     : 'Reproduce the reference image as a high-quality commerce product detail image.';
 
-  const prompt = `Commerce product detail image. Based on the reference, apply these changes:\n${regionDesc}\nStyle: professional, clean, high quality e-commerce.`;
+  const canvasDesc = outputW && outputH
+    ? `Target canvas size: ${outputW}x${outputH}px (width:height ratio = ${(outputW/outputH).toFixed(2)}:1). Compose the entire image to naturally fill this exact canvas ratio with no white borders or letterboxing. Every element should be arranged to fit this proportion.`
+    : outputW
+    ? `Target width: ${outputW}px. Compose naturally for this width.`
+    : outputH
+    ? `Target height: ${outputH}px. Compose naturally for this height.`
+    : '';
+
+  const prompt = `Commerce product detail image. Based on the reference, apply these changes:\n${regionDesc}\n${canvasDesc}\nStyle: professional, clean, high quality e-commerce. Fill the entire canvas naturally with no white padding.`;
 
   /* 요청 비율에 맞는 gpt-image-2 사이즈 선택 */
   const imageSize = (() => {
@@ -104,9 +112,9 @@ export default async function handler(req, res) {
       const resizeOptions = {
         width: outputW || undefined,
         height: outputH || undefined,
-        fit: (outputW && outputH) ? 'contain' : 'inside',  // 둘 다 지정 시 여백 포함, 하나만 지정 시 비율 유지
-        background: { r: 255, g: 255, b: 255, alpha: 1 },
-        kernel: sharp.kernel.lanczos3,  // 고품질 리사이즈
+        fit: (outputW && outputH) ? 'cover' : 'inside',
+        position: 'centre',
+        kernel: sharp.kernel.lanczos3,
         withoutEnlargement: false,
       };
       finalBuffer = await sharp(rawBuffer).resize(resizeOptions).png().toBuffer();
