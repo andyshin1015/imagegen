@@ -119,11 +119,12 @@ ${regionDesc}
         Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'dall-e-3',
-        prompt: dallePrompt,
+        model: 'gpt-image-2',
+        prompt: dallePrompt.slice(0, 1000),
         n: 1,
         size: imageSize,
         quality: 'standard',
+        response_format: 'b64_json',
       }),
     });
 
@@ -133,16 +134,8 @@ ${regionDesc}
     }
 
     const dalleData = await dalleRes.json();
-    const imageUrl = dalleData.data[0].url;
+    const imageB64 = dalleData.data[0].b64_json;
     const revisedPrompt = dalleData.data[0].revised_prompt || dallePrompt;
-
-    /* URL → base64 변환 */
-    const imgRes = await fetch(imageUrl);
-    const imgBuffer = await imgRes.arrayBuffer();
-    const imgBytes = new Uint8Array(imgBuffer);
-    let binary = '';
-    for (let i = 0; i < imgBytes.length; i++) binary += String.fromCharCode(imgBytes[i]);
-    const imageB64 = btoa(binary);
 
     return new Response(
       JSON.stringify({ image: imageB64, prompt: revisedPrompt }),
