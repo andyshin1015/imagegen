@@ -25,9 +25,9 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .topbar{height:48px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0;flex-shrink:0;background:var(--bg);}
 .topbar-logo-sidebar{width:var(--sidebar-w);height:100%;display:none;align-items:center;padding:0 16px;border-right:1px solid var(--border);flex-shrink:0;}
 .topbar-logo-sidebar.show{display:flex;}
-.topbar-right{flex:1;display:flex;align-items:center;padding:0 16px;gap:12px;}
-.logo{font-family:'Syne',sans-serif;font-weight:700;font-size:15px;letter-spacing:-0.02em;color:var(--accent);}
-.logo span{color:var(--text2);font-weight:400;font-size:13px;}
+.topbar-right{flex:1;display:flex;align-items:center;padding:0 16px;gap:12px;min-width:0;overflow:hidden;}
+.logo{font-family:'Syne',sans-serif;font-weight:700;font-size:15px;letter-spacing:-0.02em;color:var(--accent);white-space:nowrap;}
+.logo span{color:var(--text2);font-weight:400;font-size:13px;white-space:nowrap;}
 .topbar-sep{flex:1;}
 .topbar-tag{font-family:'DM Mono',monospace;font-size:11px;color:var(--text3);}
 .topbar-divider{width:1px;height:16px;background:var(--border2);flex-shrink:0;}
@@ -305,7 +305,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
           <div class="asset-empty" id="asset-empty"><div class="icon">🖼</div><p>이미지를 추가하고<br>이름을 붙여줘요</p></div>
         </div>
         <button class="asset-add-btn" id="asset-add-btn">＋ 이미지 추가</button>
-        <input type="file" id="asset-input" accept="image/*" style="display:none">
+        <input type="file" id="asset-input" accept="image/*,image/gif" style="display:none">
       </div>
     </div>
 
@@ -351,6 +351,36 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 </div>
 
 <script>
+/* ── startRename: IIFE 바깥에서 전역으로 선언 ── */
+function startRename(el, sid) {
+  /* sessions는 IIFE 안 변수 — window._sessions로 접근 */
+  var sessions = window._sessions || [];
+  var s = sessions.find(function(x){ return x.id === sid; });
+  if (!s) return;
+  var prev = s.title;
+  var input = document.createElement('input');
+  input.className = 'sidebar-title-input';
+  input.value = prev;
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+  var committed = false;
+  function commit() {
+    if (committed) return;
+    committed = true;
+    s.title = input.value.trim() || prev;
+    if (window._saveSessions) window._saveSessions();
+    if (window._renderSidebar) window._renderSidebar();
+  }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+    if (ev.key === 'Escape') { input.value = prev; commit(); }
+  });
+  input.addEventListener('click', function(ev){ ev.stopPropagation(); });
+  input.addEventListener('dblclick', function(ev){ ev.stopPropagation(); });
+}
+
 (function(){
 
 /* ── STATE ── */
@@ -368,9 +398,15 @@ var sessions = [], currentSessionId = null;
 
 function loadSessions() {
   try { sessions = JSON.parse(localStorage.getItem(sessionsKey()) || '[]'); } catch(e) { sessions = []; }
+  window._sessions = sessions;
+  window._saveSessions = saveSessions;
+  window._renderSidebar = renderSidebar;
 }
 function saveSessions() {
   try { localStorage.setItem(sessionsKey(), JSON.stringify(sessions)); } catch(e) {}
+  window._sessions = sessions;
+  window._saveSessions = saveSessions;
+  window._renderSidebar = renderSidebar;
 }
 function newSession() {
   var id = 's_' + Date.now();
@@ -508,37 +544,6 @@ function renderSidebar() {
   });
 }
 
-/* 사이드바 이름 변경 — 전역 함수로 HTML에서 직접 호출 */
-function startRename(el, sid) {
-  var s = sessions.find(function(x){ return x.id === sid; });
-  if (!s) return;
-  var prev = s.title;
-  var input = document.createElement('input');
-  input.className = 'sidebar-title-input';
-  input.value = prev;
-  el.replaceWith(input);
-  input.focus();
-  input.select();
-  var committed = false;
-  function commit() {
-    if (committed) return;
-    committed = true;
-    s.title = input.value.trim() || prev;
-    saveSessions();
-    renderSidebar();
-  }
-  input.addEventListener('blur', commit);
-  input.addEventListener('keydown', function(ev) {
-    if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
-    if (ev.key === 'Escape') { input.value = prev; commit(); }
-  });
-  input.addEventListener('click', function(ev){ ev.stopPropagation(); });
-  input.addEventListener('dblclick', function(ev){ ev.stopPropagation(); });
-}
-
-/* 전역 노출 — HTML ondblclick에서 호출 */
-window.startRename = startRename;
-
 var sidebarListenersAttached = false;
 function attachSidebarListeners() {
   if (sidebarListenersAttached) return;
@@ -666,6 +671,11 @@ document.getElementById('ref-drop-zone').addEventListener('drop', function(e){
 
 function loadRefFile(file) {
   refMime = file.type || 'image/jpeg';
+  /* 로그인 상태인데 현재 세션 없으면 새 세션 생성 */
+  if (isLoggedIn && !currentSessionId) {
+    currentSessionId = newSession();
+    renderSidebar();
+  }
   var reader = new FileReader();
   reader.onload = function(ev) {
     refImageData = ev.target.result;
@@ -879,7 +889,8 @@ function renderResult(){
 
 document.getElementById('btn-save').addEventListener('click',function(){
   if(!capturedImageUrl) return;
-  var a=document.createElement('a'); a.href=capturedImageUrl; a.download='imagegen.png'; a.click();
+  var ext = capturedImageUrl.startsWith('data:image/gif') ? 'gif' : 'png';
+  var a=document.createElement('a'); a.href=capturedImageUrl; a.download='imagegen.'+ext; a.click();
 });
 
 /* ── ARCHIVE ── */
