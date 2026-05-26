@@ -499,7 +499,7 @@ function renderSidebar() {
         : '<div class="sidebar-item-thumb-empty">🖼</div>';
       item.innerHTML = thumbHtml +
         '<div class="sidebar-item-info">' +
-          '<div class="sidebar-item-title" data-sid="' + s.id + '">' + escHtml(s.title) + '</div>' +
+          '<div class="sidebar-item-title" data-sid="' + s.id + '" ondblclick="startRename(this,\'' + s.id + '\')">' + escHtml(s.title) + '</div>' +
           '<div class="sidebar-item-time">' + formatTime(s.ts) + '</div>' +
         '</div>' +
         '<button class="sidebar-item-del" data-sid="' + s.id + '" title="삭제">✕</button>';
@@ -508,7 +508,37 @@ function renderSidebar() {
   });
 }
 
-/* 사이드바 이벤트 위임 — sidebar show 이후 한 번만 등록 */
+/* 사이드바 이름 변경 — 전역 함수로 HTML에서 직접 호출 */
+function startRename(el, sid) {
+  var s = sessions.find(function(x){ return x.id === sid; });
+  if (!s) return;
+  var prev = s.title;
+  var input = document.createElement('input');
+  input.className = 'sidebar-title-input';
+  input.value = prev;
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+  var committed = false;
+  function commit() {
+    if (committed) return;
+    committed = true;
+    s.title = input.value.trim() || prev;
+    saveSessions();
+    renderSidebar();
+  }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+    if (ev.key === 'Escape') { input.value = prev; commit(); }
+  });
+  input.addEventListener('click', function(ev){ ev.stopPropagation(); });
+  input.addEventListener('dblclick', function(ev){ ev.stopPropagation(); });
+}
+
+/* 전역 노출 — HTML ondblclick에서 호출 */
+window.startRename = startRename;
+
 var sidebarListenersAttached = false;
 function attachSidebarListeners() {
   if (sidebarListenersAttached) return;
@@ -527,35 +557,6 @@ function attachSidebarListeners() {
     if (item && !e.target.classList.contains('sidebar-title-input')) {
       loadSession(item.dataset.sid);
     }
-  });
-
-  list.addEventListener('dblclick', function(e) {
-    var titleEl = e.target.closest('.sidebar-item-title');
-    if (!titleEl) return;
-    var sid = titleEl.dataset.sid;
-    var s = sessions.find(function(x){ return x.id === sid; });
-    if (!s) return;
-    var prev = s.title;
-    var input = document.createElement('input');
-    input.className = 'sidebar-title-input';
-    input.value = prev;
-    titleEl.replaceWith(input);
-    input.focus();
-    input.select();
-    var committed = false;
-    function commit() {
-      if (committed) return;
-      committed = true;
-      s.title = input.value.trim() || prev;
-      saveSessions();
-      renderSidebar();
-    }
-    input.addEventListener('blur', commit);
-    input.addEventListener('keydown', function(ev) {
-      if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
-      if (ev.key === 'Escape') { input.value = prev; commit(); }
-    });
-    input.addEventListener('click', function(ev){ ev.stopPropagation(); });
   });
 }
 
