@@ -900,16 +900,19 @@ function renderResult(){
   if (isLoggedIn) saveCurrentState();
 }
 
-document.getElementById('btn-save').addEventListener('click', function(){
+document.getElementById('btn-save').addEventListener('click', async function(){
   if (!capturedImageUrl) return;
-  if (capturedImageUrl.startsWith('http')) {
-    /* Supabase URL — 새 탭에서 열거나 fetch해서 다운로드 */
+  try {
+    var response = await fetch(capturedImageUrl);
+    var blob = await response.blob();
+    var blobUrl = URL.createObjectURL(blob);
     var a = document.createElement('a');
-    a.href = capturedImageUrl;
+    a.href = blobUrl;
     a.download = 'imagegen.png';
-    a.target = '_blank';
     a.click();
-  } else {
+    setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 1000);
+  } catch(e) {
+    /* fetch 실패 시 폴백 */
     var a = document.createElement('a');
     a.href = capturedImageUrl;
     a.download = 'imagegen.png';
