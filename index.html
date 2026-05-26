@@ -517,28 +517,33 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
           '<button class="sidebar-item-del">✕</button>';
 
         /* 더블클릭 → 이름 편집 */
-        var titleEl = item.querySelector('.sidebar-item-title');
-        titleEl.addEventListener('dblclick', function(e) {
-          e.stopPropagation();
-          var prev = s.title;
-          var input = document.createElement('input');
-          input.className = 'sidebar-title-input';
-          input.value = prev;
-          titleEl.replaceWith(input);
-          input.focus();
-          input.select();
-          function commit() {
-            var val = input.value.trim() || prev;
-            s.title = val;
-            saveSessions();
-            renderSidebar();
-          }
-          input.addEventListener('blur', commit);
-          input.addEventListener('keydown', function(ev) {
-            if (ev.key === 'Enter') { input.blur(); }
-            if (ev.key === 'Escape') { input.value = prev; input.blur(); }
+        (function(titleEl, s) {
+          titleEl.addEventListener('dblclick', function(e) {
+            e.stopPropagation();
+            var prev = s.title;
+            var input = document.createElement('input');
+            input.className = 'sidebar-title-input';
+            input.value = prev;
+            titleEl.replaceWith(input);
+            input.focus();
+            input.select();
+            var committed = false;
+            function commit() {
+              if (committed) return;
+              committed = true;
+              var val = input.value.trim() || prev;
+              s.title = val;
+              saveSessions();
+              renderSidebar();
+            }
+            input.addEventListener('blur', commit);
+            input.addEventListener('keydown', function(ev) {
+              if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+              if (ev.key === 'Escape') { input.value = prev; commit(); }
+            });
+            input.addEventListener('click', function(e){ e.stopPropagation(); });
           });
-        });
+        })(titleEl, s);
 
         item.addEventListener('click', function(e) {
           if (e.target.classList.contains('sidebar-item-del')) return;
@@ -631,10 +636,15 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 
   /* ── REF IMAGE ── */
   document.getElementById('ref-drop').addEventListener('click', function(){
-    if (!this.classList.contains('has-image')) document.getElementById('ref-input').click();
+    if (!this.classList.contains('has-image')) {
+      var inp = document.getElementById('ref-input');
+      if (inp) inp.click();
+    }
   });
   document.getElementById('ref-input').addEventListener('change', function(e){
-    var f = e.target.files[0]; if(f) loadRefFile(f); this.value='';
+    var f = e.target.files[0];
+    if (f) loadRefFile(f);
+    this.value = '';
   });
 
   function loadRefFile(file) {
@@ -673,8 +683,17 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     if (!refDrop) return;
     refDrop.className = 'ref-drop';
     refDrop.innerHTML = '<div class="icon">📁</div><p>이미지를 클릭하거나<br>드래그해서 업로드</p><input type="file" id="ref-input" accept="image/*" style="display:none">';
-    document.getElementById('ref-input').addEventListener('change', function(e){ var f=e.target.files[0]; if(f) loadRefFile(f); this.value=''; });
-    refDrop.addEventListener('click', function(){ if(!refDrop.classList.contains('has-image')) document.getElementById('ref-input').click(); });
+    /* 새로 생성된 input에 리스너 재연결 */
+    var newInput = document.getElementById('ref-input');
+    newInput.addEventListener('change', function(e){
+      var f = e.target.files[0]; if(f) loadRefFile(f); this.value='';
+    });
+    refDrop.addEventListener('click', function(){
+      if (!refDrop.classList.contains('has-image')) {
+        var inp = document.getElementById('ref-input');
+        if (inp) inp.click();
+      }
+    });
     applyGrid(3);
     document.getElementById('cmd-empty').style.display='flex';
     var list=document.getElementById('cmd-list'); list.style.display='none'; list.innerHTML='';
@@ -790,43 +809,21 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   function setProgress(label,sub){ document.getElementById('progress-label').textContent=label; document.getElementById('progress-sub').textContent=sub||''; }
   function showOverlay(v){ document.getElementById('progress-overlay').classList.toggle('visible',v); }
 
-  /* ── 비회원 하루 5회 제한 ── */
-  var GUEST_LIMIT = 5;
-  function getGuestUsage() {
-    try {
-      var data = JSON.parse(localStorage.getItem('imagegen_guest_usage') || '{}');
-      var today = new Date().toISOString().slice(0, 10);
-      if (data.date !== today) return 0;
-      return data.count || 0;
-    } catch(e) { return 0; }
-  }
-  function incrementGuestUsage() {
-    try {
-      var today = new Date().toISOString().slice(0, 10);
-      var data = JSON.parse(localStorage.getItem('imagegen_guest_usage') || '{}');
-      if (data.date !== today) data = { date: today, count: 0 };
-      data.count += 1;
-      localStorage.setItem('imagegen_guest_usage', JSON.stringify(data));
-    } catch(e) {}
-  }
+  /* ── 비회원 제한 — 로그인 강제 ── */
   function updateGuestNotice() {
     if (isLoggedIn) return;
-    var used = getGuestUsage();
-    var remaining = Math.max(0, GUEST_LIMIT - used);
     var el = document.getElementById('guest-notice');
-    if (el) el.innerHTML = '비회원 · 무료 버전의 경우 <strong>하루 ' + GUEST_LIMIT + '회</strong> 제한 (<strong style="color:' + (remaining>0?'#d4f564':'#e05555') + '">' + remaining + '회 남음</strong>)';
+    if (!el) return;
+    el.innerHTML = '비회원 · <strong>로그인하면 무료로 월 5회</strong> 이용 가능';
   }
 
   /* ── GENERATE ── */
   document.getElementById('gen-btn').addEventListener('click', runGenerate);
   async function runGenerate(){
-    /* 비회원 제한 체크 */
+    /* 비회원 차단 → 로그인 유도 */
     if (!isLoggedIn) {
-      var used = getGuestUsage();
-      if (used >= GUEST_LIMIT) {
-        alert('비회원은 하루 ' + GUEST_LIMIT + '회까지만 이미지를 생성할 수 있어요.\n로그인하면 더 많이 사용할 수 있습니다!');
-        return;
-      }
+      alert('이미지 생성은 로그인 후 이용할 수 있어요.\n구글 계정으로 무료 가입하면 월 5회 무료로 사용할 수 있습니다!');
+      return;
     }
     var btn=document.getElementById('gen-btn');
     btn.disabled=true; document.getElementById('btn-save').disabled=true;
@@ -841,8 +838,6 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       try{ data=JSON.parse(rawText); }catch(e){ throw new Error('서버 응답 오류: '+rawText.slice(0,200)); }
       if(!res.ok) throw new Error(data.error||'API 오류');
       capturedImageUrl='data:image/png;base64,'+data.image;
-      /* 비회원이면 사용 횟수 증가 */
-      if (!isLoggedIn) { incrementGuestUsage(); updateGuestNotice(); }
       setStatus('생성 완료 ✓','idle');
       renderResult();
     }catch(err){
