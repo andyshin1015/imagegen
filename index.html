@@ -43,7 +43,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .user-avatar{width:26px;height:26px;border-radius:50%;background:var(--bg3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text2);overflow:hidden;flex-shrink:0;}
 .user-avatar img{width:100%;height:100%;object-fit:cover;}
 .user-name{font-size:11px;color:var(--text2);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.google-icon{width:13px;height:13px;flex-shrink:0;}
+.guest-notice{font-size:10px;color:var(--text3);line-height:1.5;text-align:right;max-width:220px;}
+.guest-notice strong{color:#e0a055;font-weight:500;}
 .dropdown{display:none;position:absolute;top:calc(100% + 8px);right:0;width:220px;background:var(--bg2);border:1px solid var(--border2);border-radius:12px;overflow:hidden;z-index:1000;box-shadow:0 8px 32px rgba(0,0,0,0.5);}
 .dropdown.open{display:block;}
 .dropdown-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
@@ -229,7 +230,10 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     <div class="topbar-sep"></div>
     <span class="topbar-tag">v1.0</span>
     <div class="topbar-divider"></div>
-    <div id="auth-guest" style="display:flex;align-items:center;gap:8px;">
+    <div id="auth-guest" style="display:flex;align-items:center;gap:10px;">
+      <div class="guest-notice" id="guest-notice">
+        비회원 · 무료 버전의 경우<br><strong>하루 5회</strong>로 작업 요청이 제한됩니다
+      </div>
       <button class="auth-btn auth-btn-login" id="btn-login">
         <svg class="google-icon" viewBox="0 0 18 18" fill="none"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/><path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 6.294C4.672 4.169 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
         로그인
@@ -543,6 +547,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
         });
         item.querySelector('.sidebar-item-del').addEventListener('click', function(e) {
           e.stopPropagation();
+          if (!confirm('정말로 삭제하시겠습니까?\n삭제 후 복구는 불가능합니다.')) return;
           deleteSession(s.id);
         });
         list.appendChild(item);
@@ -785,9 +790,44 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   function setProgress(label,sub){ document.getElementById('progress-label').textContent=label; document.getElementById('progress-sub').textContent=sub||''; }
   function showOverlay(v){ document.getElementById('progress-overlay').classList.toggle('visible',v); }
 
+  /* ── 비회원 하루 5회 제한 ── */
+  var GUEST_LIMIT = 5;
+  function getGuestUsage() {
+    try {
+      var data = JSON.parse(localStorage.getItem('imagegen_guest_usage') || '{}');
+      var today = new Date().toISOString().slice(0, 10);
+      if (data.date !== today) return 0;
+      return data.count || 0;
+    } catch(e) { return 0; }
+  }
+  function incrementGuestUsage() {
+    try {
+      var today = new Date().toISOString().slice(0, 10);
+      var data = JSON.parse(localStorage.getItem('imagegen_guest_usage') || '{}');
+      if (data.date !== today) data = { date: today, count: 0 };
+      data.count += 1;
+      localStorage.setItem('imagegen_guest_usage', JSON.stringify(data));
+    } catch(e) {}
+  }
+  function updateGuestNotice() {
+    if (isLoggedIn) return;
+    var used = getGuestUsage();
+    var remaining = Math.max(0, GUEST_LIMIT - used);
+    var el = document.getElementById('guest-notice');
+    if (el) el.innerHTML = '비회원 · 무료 버전의 경우 <strong>하루 ' + GUEST_LIMIT + '회</strong> 제한 (<strong style="color:' + (remaining>0?'#d4f564':'#e05555') + '">' + remaining + '회 남음</strong>)';
+  }
+
   /* ── GENERATE ── */
   document.getElementById('gen-btn').addEventListener('click', runGenerate);
   async function runGenerate(){
+    /* 비회원 제한 체크 */
+    if (!isLoggedIn) {
+      var used = getGuestUsage();
+      if (used >= GUEST_LIMIT) {
+        alert('비회원은 하루 ' + GUEST_LIMIT + '회까지만 이미지를 생성할 수 있어요.\n로그인하면 더 많이 사용할 수 있습니다!');
+        return;
+      }
+    }
     var btn=document.getElementById('gen-btn');
     btn.disabled=true; document.getElementById('btn-save').disabled=true;
     showOverlay(true); setStatus('생성 중...','loading');
@@ -801,6 +841,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       try{ data=JSON.parse(rawText); }catch(e){ throw new Error('서버 응답 오류: '+rawText.slice(0,200)); }
       if(!res.ok) throw new Error(data.error||'API 오류');
       capturedImageUrl='data:image/png;base64,'+data.image;
+      /* 비회원이면 사용 횟수 증가 */
+      if (!isLoggedIn) { incrementGuestUsage(); updateGuestNotice(); }
       setStatus('생성 완료 ✓','idle');
       renderResult();
     }catch(err){
@@ -863,6 +905,9 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   /* ── DRAG & DROP ── */
   document.addEventListener('dragover',function(e){ e.preventDefault(); });
   document.addEventListener('drop',function(e){ e.preventDefault(); var file=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(!file||!file.type.startsWith('image/')) return; loadRefFile(file); });
+
+  /* 초기 비회원 안내 업데이트 */
+  updateGuestNotice();
 
 })();
 </script>
