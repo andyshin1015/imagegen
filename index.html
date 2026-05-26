@@ -874,12 +874,13 @@ async function runGenerate(){
   try{
     setProgress('이미지 생성 중...','gpt-image-2가 그리고 있어요 (1~3분 소요)');
     var refB64=refImageData?refImageData.split(',')[1]:null;
-    var payload={refImage:refB64,refMime:refMime,assets:assets.map(function(a){ return{label:a.label,dataUrl:a.dataUrl}; }),regions:regions,outputW:outputW,outputH:outputH};
+    var payload={refImage:refB64,refMime:refMime,assets:assets.map(function(a){ return{label:a.label,dataUrl:a.dataUrl}; }),regions:regions,outputW:outputW,outputH:outputH,userId:currentUserId||'anon'};
     var res=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     var rawText=await res.text();
     var data; try{ data=JSON.parse(rawText); }catch(e){ throw new Error('서버 응답 오류: '+rawText.slice(0,200)); }
     if(!res.ok) throw new Error(data.error||'API 오류');
-    capturedImageUrl='data:image/png;base64,'+data.image;
+    /* Supabase URL이 있으면 영구 URL 사용, 없으면 base64 폴백 */
+    capturedImageUrl = data.imageUrl ? data.imageUrl : 'data:image/png;base64,'+data.image;
     setStatus('생성 완료 ✓','idle');
     renderResult();
   }catch(err){
@@ -899,10 +900,21 @@ function renderResult(){
   if (isLoggedIn) saveCurrentState();
 }
 
-document.getElementById('btn-save').addEventListener('click',function(){
-  if(!capturedImageUrl) return;
-  var ext = capturedImageUrl.startsWith('data:image/gif') ? 'gif' : 'png';
-  var a=document.createElement('a'); a.href=capturedImageUrl; a.download='imagegen.'+ext; a.click();
+document.getElementById('btn-save').addEventListener('click', function(){
+  if (!capturedImageUrl) return;
+  if (capturedImageUrl.startsWith('http')) {
+    /* Supabase URL — 새 탭에서 열거나 fetch해서 다운로드 */
+    var a = document.createElement('a');
+    a.href = capturedImageUrl;
+    a.download = 'imagegen.png';
+    a.target = '_blank';
+    a.click();
+  } else {
+    var a = document.createElement('a');
+    a.href = capturedImageUrl;
+    a.download = 'imagegen.png';
+    a.click();
+  }
 });
 
 /* ── ARCHIVE ── */
