@@ -279,7 +279,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
             <div class="size-num-wrap" id="h-num"><input class="size-input" id="h-val" type="number" min="1" placeholder="800"><span class="size-unit">px</span></div>
           </div>
         </div>
-        <div id="ref-area">
+        <div id="ref-area" style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;">
           <div class="ref-drop-zone" id="ref-drop-zone">
             <div class="icon">📁</div>
             <p>이미지를 드래그하거나<br>아래 버튼으로 업로드</p>
@@ -665,7 +665,15 @@ function loadRefFile(file) {
 }
 
 function renderRefImage(dataUrl, ratio, existingRegions) {
-  applyGrid(ratio>=2?7:ratio>=1.4?5:ratio>=0.9?4:3);
+  /* 비율에 따라 1번 칸 너비 조절
+     가로형(ratio>1): 넓게 / 정방형: 보통 / 세로형(ratio<1): 좁게 */
+  var cols;
+  if (ratio >= 2.0) cols = 7;
+  else if (ratio >= 1.4) cols = 5;
+  else if (ratio >= 0.9) cols = 4;
+  else if (ratio >= 0.6) cols = 3;
+  else cols = 2;  /* 매우 세로형 */
+  applyGrid(cols);
   var area = document.getElementById('ref-area');
   area.innerHTML =
     '<div class="ref-has-image" id="ref-has-image">' +
