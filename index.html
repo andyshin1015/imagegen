@@ -492,61 +492,71 @@ function renderSidebar() {
     groups[g].forEach(function(s) {
       var item = document.createElement('div');
       item.className = 'sidebar-item' + (s.id === currentSessionId ? ' active' : '');
+      item.dataset.sid = s.id;
       var thumbHtml = s.resultUrl
         ? '<img class="sidebar-item-thumb" src="' + s.resultUrl + '" alt="">'
         : '<div class="sidebar-item-thumb-empty">🖼</div>';
       item.innerHTML = thumbHtml +
         '<div class="sidebar-item-info">' +
-          '<div class="sidebar-item-title">' + escHtml(s.title) + '</div>' +
+          '<div class="sidebar-item-title" data-sid="' + s.id + '">' + escHtml(s.title) + '</div>' +
           '<div class="sidebar-item-time">' + formatTime(s.ts) + '</div>' +
         '</div>' +
-        '<button class="sidebar-item-del" title="삭제">✕</button>';
-
-      /* 더블클릭 → 이름 편집 */
-      var titleEl = item.querySelector('.sidebar-item-title');
-      (function(titleEl, s) {
-        titleEl.addEventListener('dblclick', function(e) {
-          e.stopPropagation();
-          var prev = s.title;
-          var input = document.createElement('input');
-          input.className = 'sidebar-title-input';
-          input.value = prev;
-          titleEl.replaceWith(input);
-          input.focus(); input.select();
-          var done = false;
-          function commit() {
-            if (done) return; done = true;
-            s.title = input.value.trim() || prev;
-            saveSessions();
-            renderSidebar();
-          }
-          input.addEventListener('blur', commit);
-          input.addEventListener('keydown', function(ev) {
-            if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
-            if (ev.key === 'Escape') { input.value = prev; commit(); }
-          });
-          input.addEventListener('click', function(e){ e.stopPropagation(); });
-        });
-      })(titleEl, s);
-
-      /* 클릭 → 세션 로드 */
-      item.addEventListener('click', function(e) {
-        if (e.target.classList.contains('sidebar-item-del')) return;
-        if (e.target.classList.contains('sidebar-title-input')) return;
-        loadSession(s.id);
-      });
-
-      /* 삭제 */
-      item.querySelector('.sidebar-item-del').addEventListener('click', function(e) {
-        e.stopPropagation();
-        if (!confirm('정말로 삭제하시겠습니까?\n삭제 후 복구는 불가능합니다.')) return;
-        deleteSession(s.id);
-      });
-
+        '<button class="sidebar-item-del" data-sid="' + s.id + '" title="삭제">✕</button>';
       list.appendChild(item);
     });
   });
 }
+
+/* 사이드바 이벤트 위임 */
+document.getElementById('sidebar-list').addEventListener('click', function(e) {
+  /* 삭제 버튼 */
+  var delBtn = e.target.closest('.sidebar-item-del');
+  if (delBtn) {
+    var sid = delBtn.dataset.sid;
+    if (!confirm('정말로 삭제하시겠습니까?\n삭제 후 복구는 불가능합니다.')) return;
+    deleteSession(sid);
+    return;
+  }
+  /* 아이템 클릭 → 세션 로드 */
+  var item = e.target.closest('.sidebar-item');
+  if (item && !e.target.classList.contains('sidebar-title-input')) {
+    loadSession(item.dataset.sid);
+  }
+});
+
+/* 더블클릭 → 이름 편집 (이벤트 위임) */
+document.getElementById('sidebar-list').addEventListener('dblclick', function(e) {
+  var titleEl = e.target.closest('.sidebar-item-title');
+  if (!titleEl) return;
+  var sid = titleEl.dataset.sid;
+  var s = sessions.find(function(x){ return x.id === sid; });
+  if (!s) return;
+  var prev = s.title;
+
+  /* 인풋으로 교체 */
+  var input = document.createElement('input');
+  input.className = 'sidebar-title-input';
+  input.value = prev;
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  var committed = false;
+  function commit() {
+    if (committed) return;
+    committed = true;
+    var val = input.value.trim() || prev;
+    s.title = val;
+    saveSessions();
+    renderSidebar();
+  }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+    if (ev.key === 'Escape') { input.value = prev; commit(); }
+  });
+  input.addEventListener('click', function(ev){ ev.stopPropagation(); });
+});
 
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
