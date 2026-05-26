@@ -6,6 +6,11 @@
 <title>ImageGen — 커머스 이미지 생성기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  var SUPABASE_URL = 'https://nhjjicmyughtyhowmohg.supabase.co';
+  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oamppY215dWdodHlob3dtb2hnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3NzE1MzksImV4cCI6MjA5NTM0NzUzOX0.RziBqFfMBzj0Eq5HYnlqIpwYN0YHO_8SgsigyZ6Iw8U';
+</script>
 <style>
 :root {
   --bg:#0e0e0f;--bg2:#161618;--bg3:#1e1e21;--bg4:#27272b;
@@ -16,11 +21,30 @@
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+
+/* TOPBAR */
 .topbar{height:48px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:12px;flex-shrink:0;background:var(--bg);}
 .logo{font-family:'Syne',sans-serif;font-weight:700;font-size:16px;letter-spacing:-0.02em;color:var(--accent);}
 .logo span{color:var(--text2);font-weight:400;}
 .topbar-sep{flex:1;}
 .topbar-tag{font-family:'DM Mono',monospace;font-size:11px;color:var(--text3);}
+.topbar-divider{width:1px;height:16px;background:var(--border2);flex-shrink:0;}
+
+/* AUTH */
+.auth-btn{height:28px;padding:0 12px;font-size:11px;font-family:'Noto Sans KR',sans-serif;font-weight:500;border-radius:6px;cursor:pointer;transition:all 0.15s;display:flex;align-items:center;gap:6px;white-space:nowrap;border:none;}
+.auth-btn-login{background:transparent;border:1px solid var(--border2);color:var(--text2);}
+.auth-btn-login:hover{border-color:var(--text2);color:var(--text);}
+.auth-btn-signup{background:var(--accent);color:#0e0e0f;}
+.auth-btn-signup:hover{background:var(--accent2);}
+.user-menu{display:flex;align-items:center;gap:8px;}
+.user-avatar{width:26px;height:26px;border-radius:50%;background:var(--bg3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text2);overflow:hidden;flex-shrink:0;}
+.user-avatar img{width:100%;height:100%;object-fit:cover;}
+.user-name{font-size:11px;color:var(--text2);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.auth-btn-signout{background:transparent;border:1px solid var(--border);color:var(--text3);font-size:10px;height:24px;padding:0 8px;border-radius:5px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;transition:all 0.15s;}
+.auth-btn-signout:hover{border-color:#e05555;color:#e05555;}
+.google-icon{width:13px;height:13px;flex-shrink:0;}
+
+/* WORKSPACE */
 .workspace{flex:1;display:grid;grid-template-columns:3fr 2fr 2fr 2fr;overflow:hidden;min-height:0;transition:grid-template-columns 0.3s ease;}
 .panel{display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden;min-width:0;}
 .panel:last-child{border-right:none;}
@@ -126,7 +150,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .action-btn:hover{border-color:var(--accent);color:var(--accent);}
 .action-btn:disabled{opacity:0.3;cursor:not-allowed;}
 
-/* PROGRESS OVERLAY */
+/* PROGRESS */
 .progress-overlay{display:none;position:absolute;inset:0;background:rgba(14,14,15,0.88);z-index:100;flex-direction:column;align-items:center;justify-content:center;gap:16px;backdrop-filter:blur(4px);}
 .progress-overlay.visible{display:flex;}
 .progress-spinner{width:36px;height:36px;border:2.5px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;}
@@ -144,6 +168,32 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <div class="logo">ImageGen <span>/ 커머스 이미지 생성기</span></div>
   <div class="topbar-sep"></div>
   <div class="topbar-tag">v1.0</div>
+  <div class="topbar-divider"></div>
+  <div id="auth-guest" style="display:flex;align-items:center;gap:8px;">
+    <button class="auth-btn auth-btn-login" id="btn-login">
+      <svg class="google-icon" viewBox="0 0 18 18" fill="none">
+        <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+        <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+        <path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
+        <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 6.294C4.672 4.169 6.656 3.58 9 3.58z" fill="#EA4335"/>
+      </svg>
+      로그인
+    </button>
+    <button class="auth-btn auth-btn-signup" id="btn-signup">
+      <svg class="google-icon" viewBox="0 0 18 18" fill="none">
+        <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+        <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+        <path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
+        <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 6.294C4.672 4.169 6.656 3.58 9 3.58z" fill="#EA4335"/>
+      </svg>
+      구글로 시작하기
+    </button>
+  </div>
+  <div id="auth-user" style="display:none;" class="user-menu">
+    <div class="user-avatar" id="user-avatar">?</div>
+    <span class="user-name" id="user-name"></span>
+    <button class="auth-btn-signout" id="btn-signout">로그아웃</button>
+  </div>
 </div>
 
 <div class="workspace" id="workspace">
@@ -242,6 +292,43 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   var outputW = null, outputH = null;
   var refImageData = null, refMime = 'image/jpeg';
 
+  /* ── SUPABASE AUTH ── */
+  var _sb = null;
+  try { _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); } catch(e) {}
+
+  function updateAuthUI(user) {
+    var guest = document.getElementById('auth-guest');
+    var userEl = document.getElementById('auth-user');
+    if (user) {
+      guest.style.display = 'none';
+      userEl.style.display = 'flex';
+      var name = (user.user_metadata && user.user_metadata.full_name) ? user.user_metadata.full_name : user.email;
+      document.getElementById('user-name').textContent = name;
+      var avatarEl = document.getElementById('user-avatar');
+      var pic = user.user_metadata && user.user_metadata.avatar_url;
+      avatarEl.innerHTML = pic ? '<img src="' + pic + '" alt="avatar">' : (name ? name[0].toUpperCase() : '?');
+    } else {
+      guest.style.display = 'flex';
+      userEl.style.display = 'none';
+    }
+  }
+
+  if (_sb) {
+    _sb.auth.getSession().then(function(r) { updateAuthUI(r.data.session ? r.data.session.user : null); });
+    _sb.auth.onAuthStateChange(function(_e, session) { updateAuthUI(session ? session.user : null); });
+  }
+
+  function signInWithGoogle() {
+    if (!_sb) return alert('Supabase URL과 KEY를 index.html에 입력해주세요');
+    _sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
+  }
+
+  document.getElementById('btn-login').addEventListener('click', signInWithGoogle);
+  document.getElementById('btn-signup').addEventListener('click', signInWithGoogle);
+  document.getElementById('btn-signout').addEventListener('click', function() {
+    if (_sb) _sb.auth.signOut().then(function() { updateAuthUI(null); });
+  });
+
   /* ── GRID ── */
   function applyGrid(refFr) {
     document.getElementById('workspace').style.gridTemplateColumns = refFr + 'fr 2fr 2fr 2fr';
@@ -264,15 +351,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   /* ── REF IMAGE ── */
   var refDrop = document.getElementById('ref-drop');
   var refInput = document.getElementById('ref-input');
-
-  refDrop.addEventListener('click', function () {
-    if (!refDrop.classList.contains('has-image')) refInput.click();
-  });
-  refInput.addEventListener('change', function (e) {
-    var file = e.target.files[0];
-    if (file) loadRefFile(file);
-    refInput.value = '';
-  });
+  refDrop.addEventListener('click', function () { if (!refDrop.classList.contains('has-image')) refInput.click(); });
+  refInput.addEventListener('change', function (e) { var f = e.target.files[0]; if (f) loadRefFile(f); refInput.value = ''; });
 
   function loadRefFile(file) {
     refMime = file.type || 'image/jpeg';
@@ -283,7 +363,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       img.onload = function () {
         var ratio = img.naturalWidth / img.naturalHeight;
         applyGrid(ratio >= 2 ? 7 : ratio >= 1.4 ? 5 : ratio >= 0.9 ? 4 : 3);
-        refDrop.classList.add('has-image');
+        refDrop.classList.add('has-image'); refDrop.onclick = null;
         refDrop.innerHTML =
           '<div class="ref-img-wrap" id="img-wrap">' +
             '<img src="' + refImageData + '" draggable="false" alt="ref">' +
@@ -301,35 +381,27 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   function clearRef() {
     regions = []; regionCount = 0; refImageData = null;
     refDrop.className = 'ref-drop';
-    refDrop.innerHTML =
-      '<div class="icon">📁</div>' +
-      '<p>이미지를 클릭하거나<br>드래그해서 업로드</p>' +
-      '<input type="file" id="ref-input" accept="image/*" style="display:none">';
+    refDrop.innerHTML = '<div class="icon">📁</div><p>이미지를 클릭하거나<br>드래그해서 업로드</p><input type="file" id="ref-input" accept="image/*" style="display:none">';
     var ni = document.getElementById('ref-input');
     ni.addEventListener('change', function (e) { var f = e.target.files[0]; if (f) loadRefFile(f); ni.value = ''; });
     refDrop.addEventListener('click', function () { if (!refDrop.classList.contains('has-image')) ni.click(); });
     applyGrid(3);
     document.getElementById('cmd-empty').style.display = 'flex';
-    var list = document.getElementById('cmd-list');
-    list.style.display = 'none'; list.innerHTML = '';
+    var list = document.getElementById('cmd-list'); list.style.display = 'none'; list.innerHTML = '';
   }
 
   /* ── DRAG SELECT ── */
   function getPct(wrap, cx, cy) {
     var r = wrap.getBoundingClientRect();
-    return {
-      x: Math.max(0, Math.min(100, (cx - r.left) / r.width * 100)),
-      y: Math.max(0, Math.min(100, (cy - r.top) / r.height * 100))
-    };
+    return { x: Math.max(0, Math.min(100, (cx-r.left)/r.width*100)), y: Math.max(0, Math.min(100, (cy-r.top)/r.height*100)) };
   }
   function onMouseDown(e) {
     if (e.button !== 0 || e.target.closest('#ref-clear-btn')) return;
     var wrap = document.getElementById('img-wrap'); if (!wrap) return;
     var s = getPct(wrap, e.clientX, e.clientY);
     dragState = { wrap: wrap, startX: s.x, startY: s.y };
-    var sel = document.createElement('div');
-    sel.className = 'sel-rect'; sel.id = 'sel-rect';
-    sel.style.cssText = 'left:' + s.x + '%;top:' + s.y + '%;width:0;height:0';
+    var sel = document.createElement('div'); sel.className = 'sel-rect'; sel.id = 'sel-rect';
+    sel.style.cssText = 'left:'+s.x+'%;top:'+s.y+'%;width:0;height:0';
     wrap.appendChild(sel);
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
@@ -340,7 +412,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     var p = getPct(dragState.wrap, e.clientX, e.clientY);
     var sel = document.getElementById('sel-rect'); if (!sel) return;
     var l = Math.min(dragState.startX, p.x), t = Math.min(dragState.startY, p.y);
-    sel.style.cssText = 'left:' + l + '%;top:' + t + '%;width:' + Math.abs(p.x - dragState.startX) + '%;height:' + Math.abs(p.y - dragState.startY) + '%';
+    sel.style.cssText = 'left:'+l+'%;top:'+t+'%;width:'+Math.abs(p.x-dragState.startX)+'%;height:'+Math.abs(p.y-dragState.startY)+'%';
   }
   function onMouseUp(e) {
     document.removeEventListener('mousemove', onMouseMove);
@@ -349,18 +421,15 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     var sel = document.getElementById('sel-rect'); if (sel) sel.remove();
     var p = getPct(dragState.wrap, e.clientX, e.clientY);
     var l = Math.min(dragState.startX, p.x), t = Math.min(dragState.startY, p.y);
-    var w = Math.abs(p.x - dragState.startX), h = Math.abs(p.y - dragState.startY);
-    dragState = null;
-    if (w < 2 || h < 2) return;
-    regionCount++;
-    var id = regionCount;
-    regions.push({ id: id, l: l, t: t, w: w, h: h, cmd: '' });
+    var w = Math.abs(p.x-dragState.startX), h = Math.abs(p.y-dragState.startY);
+    dragState = null; if (w < 2 || h < 2) return;
+    regionCount++; var id = regionCount;
+    regions.push({ id:id, l:l, t:t, w:w, h:h, cmd:'' });
     var hint = document.getElementById('drag-hint'); if (hint) hint.style.display = 'none';
     var wrap = document.getElementById('img-wrap');
-    var reg = document.createElement('div');
-    reg.className = 'region'; reg.id = 'region-' + id;
-    reg.style.cssText = 'left:' + l + '%;top:' + t + '%;width:' + w + '%;height:' + h + '%';
-    reg.innerHTML = '<div class="region-label">영역' + id + '</div><button class="region-del">✕</button>';
+    var reg = document.createElement('div'); reg.className = 'region'; reg.id = 'region-'+id;
+    reg.style.cssText = 'left:'+l+'%;top:'+t+'%;width:'+w+'%;height:'+h+'%';
+    reg.innerHTML = '<div class="region-label">영역'+id+'</div><button class="region-del">✕</button>';
     reg.querySelector('.region-del').addEventListener('click', function () { deleteRegion(id); });
     wrap.appendChild(reg);
     addCmdCard(id);
@@ -369,32 +438,27 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   /* ── CMD CARDS ── */
   function getHintHtml() {
     if (!assets.length) return '3번 칸에서 소재 이미지를 추가하면 이름으로 참조할 수 있어요';
-    return '참조 가능: ' + assets.map(function (a) { return '<strong>' + (a.label || '(미입력)') + '</strong>'; }).join(', ');
+    return '참조 가능: ' + assets.map(function(a) { return '<strong>'+(a.label||'(미입력)')+'</strong>'; }).join(', ');
   }
-  function refreshHints() {
-    document.querySelectorAll('.cmd-hint').forEach(function (el) { el.innerHTML = getHintHtml(); });
-  }
+  function refreshHints() { document.querySelectorAll('.cmd-hint').forEach(function(el) { el.innerHTML = getHintHtml(); }); }
   function addCmdCard(id) {
     document.getElementById('cmd-empty').style.display = 'none';
     var list = document.getElementById('cmd-list'); list.style.display = 'flex';
-    var card = document.createElement('div');
-    card.className = 'cmd-card'; card.id = 'cmd-card-' + id;
+    var card = document.createElement('div'); card.className = 'cmd-card'; card.id = 'cmd-card-'+id;
     card.innerHTML =
-      '<div class="cmd-card-header"><div class="cmd-dot"></div><span class="cmd-label">영역' + id + '</span><button class="cmd-del-btn">✕</button></div>' +
+      '<div class="cmd-card-header"><div class="cmd-dot"></div><span class="cmd-label">영역'+id+'</span><button class="cmd-del-btn">✕</button></div>' +
       '<textarea rows="3" placeholder="예: \'제품샷\'을 배경으로 사용하고 텍스트를 흰색으로"></textarea>' +
-      '<div class="cmd-hint">' + getHintHtml() + '</div>';
-    card.querySelector('.cmd-del-btn').addEventListener('click', function () { deleteRegion(id); });
-    card.querySelector('textarea').addEventListener('input', function () { updateCmd(id, this.value); });
+      '<div class="cmd-hint">'+getHintHtml()+'</div>';
+    card.querySelector('.cmd-del-btn').addEventListener('click', function() { deleteRegion(id); });
+    card.querySelector('textarea').addEventListener('input', function() { updateCmd(id, this.value); });
     list.appendChild(card);
     card.querySelector('textarea').focus();
   }
-  function updateCmd(id, val) {
-    var r = regions.find(function (r) { return r.id === id; }); if (r) r.cmd = val;
-  }
+  function updateCmd(id, val) { var r = regions.find(function(r) { return r.id===id; }); if (r) r.cmd = val; }
   function deleteRegion(id) {
-    regions = regions.filter(function (r) { return r.id !== id; });
-    var card = document.getElementById('cmd-card-' + id); if (card) card.remove();
-    var reg = document.getElementById('region-' + id); if (reg) reg.remove();
+    regions = regions.filter(function(r) { return r.id!==id; });
+    var card = document.getElementById('cmd-card-'+id); if (card) card.remove();
+    var reg = document.getElementById('region-'+id); if (reg) reg.remove();
     if (!regions.length) {
       document.getElementById('cmd-empty').style.display = 'flex';
       document.getElementById('cmd-list').style.display = 'none';
@@ -404,23 +468,22 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 
   /* ── ASSETS ── */
   var assetInput = document.getElementById('asset-input');
-  document.getElementById('asset-add-btn').addEventListener('click', function () { assetInput.click(); });
-  assetInput.addEventListener('change', function (e) {
+  document.getElementById('asset-add-btn').addEventListener('click', function() { assetInput.click(); });
+  assetInput.addEventListener('change', function(e) {
     var file = e.target.files[0]; if (!file) return;
     var reader = new FileReader();
-    reader.onload = function (ev) {
+    reader.onload = function(ev) {
       var id = ++assetIdCounter;
-      var asset = { id: id, dataUrl: ev.target.result, label: '' };
+      var asset = { id:id, dataUrl:ev.target.result, label:'' };
       assets.push(asset);
       document.getElementById('asset-empty').style.display = 'none';
-      var item = document.createElement('div');
-      item.className = 'asset-item'; item.id = 'asset-item-' + id;
+      var item = document.createElement('div'); item.className = 'asset-item'; item.id = 'asset-item-'+id;
       item.innerHTML =
-        '<img class="asset-thumb" src="' + asset.dataUrl + '" alt="">' +
+        '<img class="asset-thumb" src="'+asset.dataUrl+'" alt="">' +
         '<input class="asset-label-input" type="text" placeholder="이름 (예: 제품샷)">' +
         '<button class="asset-del-btn">✕</button>';
-      item.querySelector('.asset-label-input').addEventListener('input', function () { asset.label = this.value; refreshHints(); });
-      item.querySelector('.asset-del-btn').addEventListener('click', function () { deleteAsset(id); });
+      item.querySelector('.asset-label-input').addEventListener('input', function() { asset.label = this.value; refreshHints(); });
+      item.querySelector('.asset-del-btn').addEventListener('click', function() { deleteAsset(id); });
       document.getElementById('asset-list').appendChild(item);
       refreshHints();
     };
@@ -428,8 +491,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     assetInput.value = '';
   });
   function deleteAsset(id) {
-    assets = assets.filter(function (a) { return a.id !== id; });
-    var item = document.getElementById('asset-item-' + id); if (item) item.remove();
+    assets = assets.filter(function(a) { return a.id!==id; });
+    var item = document.getElementById('asset-item-'+id); if (item) item.remove();
     if (!assets.length) document.getElementById('asset-empty').style.display = 'flex';
     refreshHints();
   }
@@ -438,11 +501,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   function setStatus(text, state) {
     document.getElementById('status-text').textContent = text;
     var p = document.getElementById('pulse');
-    p.className = 'pulse' + (state === 'loading' ? ' active' : state === 'error' ? ' error' : '');
+    p.className = 'pulse'+(state==='loading'?' active':state==='error'?' error':'');
   }
   function setProgress(label, sub) {
     document.getElementById('progress-label').textContent = label;
-    document.getElementById('progress-sub').textContent = sub || '';
+    document.getElementById('progress-sub').textContent = sub||'';
   }
   function showOverlay(v) { document.getElementById('progress-overlay').classList.toggle('visible', v); }
 
@@ -455,49 +518,22 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     document.getElementById('btn-save').disabled = true;
     showOverlay(true);
     setStatus('생성 중...', 'loading');
-
     try {
-      setProgress('레퍼런스 분석 중...', 'GPT-4o가 이미지를 읽고 있어요');
-
-      /* base64만 추출 (data:mime;base64, 제거) */
+      setProgress('이미지 생성 중...', 'gpt-image-2가 그리고 있어요 (1~3분 소요)');
       var refB64 = refImageData ? refImageData.split(',')[1] : null;
-
-      var payload = {
-        refImage: refB64,
-        refMime: refMime,
-        assets: assets.map(function (a) {
-          return { label: a.label, dataUrl: a.dataUrl };
-        }),
-        regions: regions,
-        outputW: outputW,
-        outputH: outputH
-      };
-
-      setProgress('이미지 생성 중...', 'gpt-image-2가 이미지를 그리고 있어요 (약 120초)');
-
-      var res = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
+      var payload = { refImage:refB64, refMime:refMime, assets:assets.map(function(a) { return {label:a.label,dataUrl:a.dataUrl}; }), regions:regions, outputW:outputW, outputH:outputH };
+      var res = await fetch('/api/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
       var rawText = await res.text();
       var data;
-      try {
-        data = JSON.parse(rawText);
-      } catch(e) {
-        throw new Error('서버 응답 오류: ' + rawText.slice(0, 200));
-      }
-      if (!res.ok) throw new Error(data.error || 'API 오류');
-
-      capturedImageUrl = 'data:image/png;base64,' + data.image;
+      try { data = JSON.parse(rawText); } catch(e) { throw new Error('서버 응답 오류: '+rawText.slice(0,200)); }
+      if (!res.ok) throw new Error(data.error||'API 오류');
+      capturedImageUrl = 'data:image/png;base64,'+data.image;
       setStatus('생성 완료 ✓', 'idle');
       renderResult();
-    } catch (err) {
-      setStatus('오류: ' + err.message, 'error');
+    } catch(err) {
+      setStatus('오류: '+err.message, 'error');
       console.error(err);
     }
-
     showOverlay(false);
     btn.disabled = false;
   }
@@ -513,15 +549,14 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   }
 
   /* ── SAVE ── */
-  document.getElementById('btn-save').addEventListener('click', function () {
+  document.getElementById('btn-save').addEventListener('click', function() {
     if (!capturedImageUrl) return;
-    var a = document.createElement('a');
-    a.href = capturedImageUrl; a.download = 'imagegen.png'; a.click();
+    var a = document.createElement('a'); a.href = capturedImageUrl; a.download = 'imagegen.png'; a.click();
   });
 
   /* ── DRAG & DROP ── */
-  document.addEventListener('dragover', function (e) { e.preventDefault(); });
-  document.addEventListener('drop', function (e) {
+  document.addEventListener('dragover', function(e) { e.preventDefault(); });
+  document.addEventListener('drop', function(e) {
     e.preventDefault();
     var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
     if (!file || !file.type.startsWith('image/')) return;
